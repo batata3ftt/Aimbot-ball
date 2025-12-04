@@ -1,3 +1,7 @@
+-- Aimbot Ball Script OTIMIZADO - Roblox
+-- Compatível com Delta Executor (Mobile)
+-- SEM LAG | SEM AFETAR SPEED
+
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
@@ -5,8 +9,9 @@ local Camera = workspace.CurrentCamera
 
 local Config = {
     Enabled = true,
-    MaxDistance = 500,
+    MaxDistance = math.huge, -- Sem limite de distância
     Prediction = 0.13,
+    MinVelocity = 0.5, -- Só mira em bolas que estão se movendo
 }
 
 local currentTarget = nil
@@ -14,12 +19,16 @@ local ballCache = {}
 local cacheTime = 0
 local CACHE_DURATION = 0.5
 
--- Encontra a bola (COM CACHE para melhor performance)
+-- Encontra a bola REAL (que está se movendo)
 local function GetClosestBall()
     local currentTime = tick()
     
+    -- Valida se o target atual ainda é válido
     if currentTime - cacheTime < CACHE_DURATION and currentTarget and currentTarget.Parent then
-        return currentTarget
+        local velocity = currentTarget.AssemblyLinearVelocity or currentTarget.Velocity or Vector3.new(0, 0, 0)
+        if velocity.Magnitude >= Config.MinVelocity then
+            return currentTarget
+        end
     end
     
     local closestBall = nil
@@ -31,34 +40,49 @@ local function GetClosestBall()
     local rootPart = character:FindFirstChild("HumanoidRootPart")
     if not rootPart then return nil end
     
+    -- Função para verificar se é uma bola válida
+    local function isValidBall(obj)
+        if not obj:IsA("BasePart") then return false end
+        
+        -- Verifica o nome
+        local name = obj.Name:lower()
+        if not (name == "ball" or name:find("ball") or name:find("football") or name:find("soccer")) then
+            return false
+        end
+        
+        -- Verifica se está se movendo (bola real)
+        local velocity = obj.AssemblyLinearVelocity or obj.Velocity or Vector3.new(0, 0, 0)
+        if velocity.Magnitude < Config.MinVelocity then
+            return false -- Ignora bolas paradas (fantasmas)
+        end
+        
+        -- Verifica se tem física (CanCollide ou não ancorado)
+        if obj.Anchored then
+            return false -- Ignora bolas ancoradas (decoração)
+        end
+        
+        return true
+    end
+    
+    -- Busca em workspace direto
     for _, obj in pairs(workspace:GetChildren()) do
-        if obj:IsA("BasePart") and (
-            obj.Name:lower():find("ball") or 
-            obj.Name:lower():find("football") or
-            obj.Name:lower():find("soccer") or
-            obj.Name == "Ball"
-        ) then
+        if isValidBall(obj) then
             local distance = (obj.Position - rootPart.Position).Magnitude
-            
-            if distance < shortestDistance and distance > 2 then
+            if distance < shortestDistance then
                 closestBall = obj
                 shortestDistance = distance
             end
         end
     end
     
+    -- Busca em pastas e models
     if not closestBall then
         for _, folder in pairs(workspace:GetChildren()) do
             if folder:IsA("Folder") or folder:IsA("Model") then
-                for _, obj in pairs(folder:GetChildren()) do
-                    if obj:IsA("BasePart") and (
-                        obj.Name:lower():find("ball") or 
-                        obj.Name:lower():find("football") or
-                        obj.Name == "Ball"
-                    ) then
+                for _, obj in pairs(folder:GetDescendants()) do
+                    if isValidBall(obj) then
                         local distance = (obj.Position - rootPart.Position).Magnitude
-                        
-                        if distance < shortestDistance and distance > 2 then
+                        if distance < shortestDistance then
                             closestBall = obj
                             shortestDistance = distance
                         end
@@ -81,7 +105,7 @@ local function PredictPosition(ball)
     return ball.Position
 end
 
--- AIMBOT OTIMIZADO
+-- AIMBOT OTIMIZADO - Mantém personagem e câmera juntos
 local function AimbotBall()
     if not Config.Enabled then return end
     
@@ -102,14 +126,23 @@ local function AimbotBall()
     
     local predictedPos = PredictPosition(currentTarget)
     
+    -- IMPORTANTE: Gira o personagem para a bola
     local direction = (predictedPos - rootPart.Position)
-    local lookAt = Vector3.new(direction.X, 0, direction.Z)
+    local lookAtHorizontal = Vector3.new(direction.X, 0, direction.Z)
     
-    if lookAt.Magnitude > 0.1 then
-        rootPart.CFrame = CFrame.new(rootPart.Position, rootPart.Position + lookAt.Unit)
+    if lookAtHorizontal.Magnitude > 0.1 then
+        -- Mantém a posição Y do personagem, só gira no plano horizontal
+        local targetCFrame = CFrame.new(rootPart.Position, rootPart.Position + lookAtHorizontal.Unit)
+        rootPart.CFrame = targetCFrame
     end
     
-    Camera.CFrame = CFrame.new(Camera.CFrame.Position, predictedPos)
+    -- IMPORTANTE: Câmera acompanha o personagem E olha para a bola
+    -- Mantém a câmera atrás do personagem olhando para a bola
+    local cameraOffset = rootPart.CFrame.LookVector * -5 + Vector3.new(0, 2, 0)
+    local cameraPosition = rootPart.Position + cameraOffset
+    
+    -- Faz a câmera olhar da posição do personagem para a bola
+    Camera.CFrame = CFrame.new(cameraPosition, predictedPos)
     
     humanoid.WalkSpeed = originalSpeed
 end
@@ -128,6 +161,7 @@ local Frame = Instance.new("Frame")
 local UICorner = Instance.new("UICorner")
 local FrameStroke = Instance.new("UIStroke")
 local Title = Instance.new("TextLabel")
+local TitleCorner = Instance.new("UICorner")
 local TitleGlow = Instance.new("UIStroke")
 local ToggleButton = Instance.new("TextButton")
 local UICorner2 = Instance.new("UICorner")
@@ -166,6 +200,10 @@ Title.Font = Enum.Font.SourceSansBold
 Title.Text = "AIMBOT (BETA)"
 Title.TextColor3 = Color3.fromRGB(255, 0, 0)
 Title.TextSize = 18
+Title.ClipsDescendants = true
+
+TitleCorner.CornerRadius = UDim.new(0, 20)
+TitleCorner.Parent = Title
 
 TitleGlow.Parent = Title
 TitleGlow.Color = Color3.fromRGB(255, 0, 0)
